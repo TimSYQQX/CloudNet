@@ -1,0 +1,3 @@
+[submodule "AutoDeeplab"]
+	path = AutoDeeplab
+	url = ./AutoDeeplab/
