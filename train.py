@@ -14,7 +14,9 @@ from utils import rle_decode, get_training_augmentation, get_preprocessing, get_
 from catalyst.dl.callbacks import DiceCallback, EarlyStoppingCallback, InferCallback, CheckpointCallback
 from albumentations import pytorch as AT
 from PIL import Image
+from tqdm import tqdm
 import cv2
+from  torch.utils.tensorboard import SummaryWriter
 import os
 import argparse
 
@@ -33,7 +35,7 @@ def main():
     parser.add_argument('--batch_size', type=int, default=16, help='Batch size')
 
     args = parser.parse_args()
-
+    num_epochs = args.epochs_num
     path = args.dataset_path
     logdir = args.log_path
     train = pd.read_csv(f'{path}/train.csv')
@@ -114,23 +116,56 @@ def main():
         {'params': model.encoder.parameters(), 'lr': 1e-3},
     ])
     scheduler = ReduceLROnPlateau(optimizer, factor=0.15, patience=2)
-    criterion = smp.utils.losses.BCEDiceLoss(eps=1.)
+    criterion = smp.utils.losses.DiceLoss(eps=1.)
     runner = SupervisedRunner()
 
 
 
     ######### train the model
-    runner.train(
-        model=model,
-        criterion=criterion,
-        optimizer=optimizer,
-        scheduler=scheduler,
-        loaders=loaders,
-        callbacks=[DiceCallback(), EarlyStoppingCallback(patience=5, min_delta=0.001)],
-        logdir=logdir,
-        num_epochs=args.epochs_num,
-        verbose=True
-    )
+#     runner.train(
+#         model=model,
+#         criterion=criterion,
+#         optimizer=optimizer,
+#         scheduler=scheduler,
+#         loaders=loaders,
+#         callbacks=[DiceCallback(), EarlyStoppingCallback(patience=5, min_delta=0.001)],
+#         logdir=logdir,
+#         num_epochs=args.epochs_num,
+#         verbose=True
+#     )
+    model.cuda(1)
+    writer = SummaryWriter()
+    step = 0
+    for epoch in range(num_epochs):
+        torch.cuda.empty_cache() 
+        print("epoch: ", epoch)
+        print("training")
+        model.train()
+        for img, label in tqdm(loaders["train"]):
+            img = img.cuda(1)
+            label = label.cuda(1)
+            logit = model(img)
+            optimizer.zero_grad()
+            loss = criterion(logit, label)
+            loss.backward()
+            optimizer.step()
+            writer.add_scalar("training_loss", loss.item(), step)
+            step += 1
+
+        print("validating")
+        model.val()
+        valid_loss = []
+        for img, label in tqdm(loaders["test"]):
+            img = img.cuda(1)
+            label = label.cuda(1)
+            logit = model(img)
+            loss = criterion(logit, label)
+            writer.add_scalar("validation_loss", loss.item(), step)
+            
+        torch.save(model.state_dict(), "checkpoint/"+epoch)
+
+        scheduler.step()
+    writer.close()
 
 if __name__== "__main__":
     main()
