@@ -32,7 +32,7 @@ def main():
     parser.add_argument('--encoder_weight', default='imagenet', help='Type of encoder weight in model')
     parser.add_argument('--device', default='cuda', help='Training device with default cuda')
     parser.add_argument('--class_num', type=int, default=4, help='Number of classes trying to train')
-    parser.add_argument('--batch_size', type=int, default=16, help='Batch size')
+    parser.add_argument('--batch_size', type=int, default=8, help='Batch size')
 
     args = parser.parse_args()
     num_epochs = args.epochs_num
@@ -56,20 +56,20 @@ def main():
     sub['im_id'] = sub['Image_Label'].apply(lambda x: x.split('_')[0])
 
 
-    ######### visualize training image
-    fig = plt.figure(figsize=(25, 16))
-    for j, im_id in enumerate(np.random.choice(train['im_id'].unique(), 4)):
-        for i, (idx, row) in enumerate(train.loc[train['im_id'] == im_id].iterrows()):
-            ax = fig.add_subplot(5, 4, j * 4 + i + 1, xticks=[], yticks=[])
-            im = Image.open(f"{path}/train_images/{row['Image_Label'].split('_')[0]}")
-            plt.imshow(im)
-            mask_rle = row['EncodedPixels']
-            try:  # label might not be there!
-                mask = rle_decode(mask_rle)
-            except:
-                mask = np.zeros((1400, 2100))
-            plt.imshow(mask, alpha=0.5, cmap='gray')
-            ax.set_title(f"Image: {row['Image_Label'].split('_')[0]}. Label: {row['label']}")
+#     ######### visualize training image
+#     fig = plt.figure(figsize=(25, 16))
+#     for j, im_id in enumerate(np.random.choice(train['im_id'].unique(), 4)):
+#         for i, (idx, row) in enumerate(train.loc[train['im_id'] == im_id].iterrows()):
+#             ax = fig.add_subplot(5, 4, j * 4 + i + 1, xticks=[], yticks=[])
+#             im = Image.open(f"{path}/train_images/{row['Image_Label'].split('_')[0]}")
+#             plt.imshow(im)
+#             mask_rle = row['EncodedPixels']
+#             try:  # label might not be there!
+#                 mask = rle_decode(mask_rle)
+#             except:
+#                 mask = np.zeros((1400, 2100))
+#             plt.imshow(mask, alpha=0.5, cmap='gray')
+#             ax.set_title(f"Image: {row['Image_Label'].split('_')[0]}. Label: {row['label']}")
 
 
 
@@ -145,26 +145,27 @@ def main():
             img = img.cuda(1)
             label = label.cuda(1)
             logit = model(img)
-            optimizer.zero_grad()
             loss = criterion(logit, label)
             loss.backward()
             optimizer.step()
+            optimizer.zero_grad()
             writer.add_scalar("training_loss", loss.item(), step)
             step += 1
 
         print("validating")
-        model.val()
-        valid_loss = []
-        for img, label in tqdm(loaders["test"]):
+        model.eval()
+        validation_loss = []
+        for img, label in tqdm(loaders["valid"]):
             img = img.cuda(1)
             label = label.cuda(1)
             logit = model(img)
             loss = criterion(logit, label)
-            writer.add_scalar("validation_loss", loss.item(), step)
-            
-        torch.save(model.state_dict(), "checkpoint/"+epoch)
-
-        scheduler.step()
+            validation_loss.append(loss.item())
+        
+        print("Validation loss: ", np.mean(validation_loss))
+        writer.add_scalar("validation_loss", np.mean(validation_loss), epoch)
+        torch.save(model.state_dict(), "../checkpoint/"+str(epoch))
+        scheduler.step(np.mean(validation_loss))
     writer.close()
 
 if __name__== "__main__":
