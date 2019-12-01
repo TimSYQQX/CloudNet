@@ -1,3 +1,9 @@
 [submodule "AutoDeeplab"]
 	path = AutoDeeplab
 	url = ./AutoDeeplab/
+[submodule "SMP"]
+	path = segmentation_models.pytorch
+	url = ./segmentation_models.pytorch/
+[submodule "cleanlab"]
+	path = cleanlab
+	url = ./cleanlab/
