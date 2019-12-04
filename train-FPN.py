@@ -87,7 +87,7 @@ def main():
 
     ######### model parameter
     ACTIVATION = torch.nn.Sigmoid
-    model = smp.Unet(
+    model = smp.FPN(
         encoder_name=args.encoder,
         encoder_weights=args.encoder_weight,
         classes=args.class_num,
@@ -136,7 +136,7 @@ def main():
 #         verbose=True
 #     )
     model.cuda(1)
-    writer = SummaryWriter(r"runs/Unet")
+    writer = SummaryWriter("runs/FPN")
     step = 0
     for epoch in range(num_epochs):
         torch.cuda.empty_cache() 
@@ -168,7 +168,7 @@ def main():
         
         print("Validation loss: ", np.mean(validation_loss))
         writer.add_scalar("validation_loss", np.mean(validation_loss), epoch)
-        torch.save(model.state_dict(), "../checkpoint/Unet/"+str(epoch))
+        torch.save(model.state_dict(), "../checkpoint/FPN/"+str(epoch))
         scheduler.step(np.mean(validation_loss))
     writer.close()
 

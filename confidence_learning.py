@@ -1,118 +1,140 @@
-import torch.utils.data as data
-import pandas as pd
-import albumentations as albu
-import matplotlib.pyplot as plt
+from __future__ import print_function, absolute_import, division, with_statement
+import cleanlab
 import numpy as np
-from sklearn.model_selection import train_test_split
-from dataset import CloudDataset
-import segmentation_models_pytorch as smp
-from catalyst.dl.runner import SupervisedRunner
-from torch.optim.lr_scheduler import StepLR, ReduceLROnPlateau, CosineAnnealingLR
-import torch
-from torch.utils.data import DataLoader
-from utils import rle_decode, get_training_augmentation, get_preprocessing, get_validation_augmentation
-from catalyst.dl.callbacks import DiceCallback, EarlyStoppingCallback, InferCallback, CheckpointCallback
-from albumentations import pytorch as AT
-from PIL import Image
-from tqdm import tqdm
-import cv2
-from  torch.utils.tensorboard import SummaryWriter
-import os
-import argparse
-
-def main():
-    print("runing confidence learning")
-    ######### add arguments
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--epochs_num', type=int, default=19,
-                        help='Number of epochs to train.')
-    parser.add_argument('--dataset_path', default='../input/understanding_cloud_organization', help="Path to the dataset directory")
-    parser.add_argument('--log_path', default='./logs/segmentation',
-                        help="Path to the log directory")
-    parser.add_argument('--encoder', default='resnet50', help="Type of encoder in model")
-    parser.add_argument('--encoder_weight', default='imagenet', help='Type of encoder weight in model')
-    parser.add_argument('--device', default='cuda', help='Training device with default cuda')
-    parser.add_argument('--class_num', type=int, default=4, help='Number of classes trying to train')
-    parser.add_argument('--batch_size', type=int, default=8, help='Batch size')
-
-    args = parser.parse_args()
-    num_epochs = args.epochs_num
-    path = args.dataset_path
-    logdir = args.log_path
-    train = pd.read_csv(f'{path}/train.csv')
-    sub = pd.read_csv(f'{path}/sample_submission.csv')
-
-    ######### should go to logging
-    n_train = len(os.listdir(f'{path}/train_images'))
-    n_test = len(os.listdir(f'{path}/test_images'))
-    train['Image_Label'].apply(lambda x: x.split('_')[1]).value_counts()
-    train.loc[train['EncodedPixels'].isnull() == False, 'Image_Label'].apply(lambda x: x.split('_')[1]).value_counts()
-    train.loc[train['EncodedPixels'].isnull() == False, 'Image_Label'].apply(
-        lambda x: x.split('_')[0]).value_counts().value_counts()
-
-    train['label'] = train['Image_Label'].apply(lambda x: x.split('_')[1])
-    train['im_id'] = train['Image_Label'].apply(lambda x: x.split('_')[0])
-
-    sub['label'] = sub['Image_Label'].apply(lambda x: x.split('_')[1])
-    sub['im_id'] = sub['Image_Label'].apply(lambda x: x.split('_')[0])
-
-
-#     ######### visualize training image
-#     fig = plt.figure(figsize=(25, 16))
-#     for j, im_id in enumerate(np.random.choice(train['im_id'].unique(), 4)):
-#         for i, (idx, row) in enumerate(train.loc[train['im_id'] == im_id].iterrows()):
-#             ax = fig.add_subplot(5, 4, j * 4 + i + 1, xticks=[], yticks=[])
-#             im = Image.open(f"{path}/train_images/{row['Image_Label'].split('_')[0]}")
-#             plt.imshow(im)
-#             mask_rle = row['EncodedPixels']
-#             try:  # label might not be there!
-#                 mask = rle_decode(mask_rle)
-#             except:
-#                 mask = np.zeros((1400, 2100))
-#             plt.imshow(mask, alpha=0.5, cmap='gray')
-#             ax.set_title(f"Image: {row['Image_Label'].split('_')[0]}. Label: {row['label']}")
-
-
-
-    ######### generating training, validation and test set
-    id_mask_count = train.loc[train['EncodedPixels'].isnull() == False, 'Image_Label'].apply(
-        lambda x: x.split('_')[0]).value_counts(). \
-        reset_index().rename(columns={'index': 'img_id', 'Image_Label': 'count'})
-    train_ids, valid_ids = train_test_split(id_mask_count['img_id'].values, random_state=42,
-                                            stratify=id_mask_count['count'], test_size=0.1)
-    test_ids = sub['Image_Label'].apply(lambda x: x.split('_')[0]).drop_duplicates().values
-
-
-
-
-    ######### model parameter
-    ACTIVATION = None
-    model = smp.Unet(
-        encoder_name=args.encoder,
-        encoder_weights=args.encoder_weight,
-        classes=args.class_num,
-        activation=ACTIVATION,
-    )
-    preprocessing_fn = smp.encoders.get_preprocessing_fn(args.encoder, args.encoder_weight)
-
-
-
-    ######### define train training parameter
-    num_workers = 0
-    train_dataset = CloudDataset(df=train, datatype='train', img_ids=train_ids, transforms=get_training_augmentation(),
-                                 preprocessing=get_preprocessing(preprocessing_fn), path=path)
-    valid_dataset = CloudDataset(df=train, datatype='valid', img_ids=valid_ids,
-                                 transforms=get_validation_augmentation(),
-                                 preprocessing=get_preprocessing(preprocessing_fn), path=path)
-
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=num_workers)
-    valid_loader = DataLoader(valid_dataset, batch_size=args.batch_size, shuffle=False, num_workers=num_workers)
+from sklearn.datasets import load_digits
+from sklearn.linear_model import LogisticRegression
+# To silence convergence warnings caused by using a weak
+# logistic regression classifier on image data
+import warnings
+warnings.simplefilter("ignore")
+np.random.seed(477)
     
-    print(len(train_dataset))
-    
-    
-    
-    
-if __name__=="__main__":
-    main()
-    
+# STEP 0 - Get some real digits data. Add a bunch of label errors. Get probs.
+
+# Get handwritten digits data
+X = load_digits()['data']
+y = load_digits()['target']
+print('Handwritten digits datasets number of classes:', len(np.unique(y)))
+print('Handwritten digits datasets number of examples:', len(y))
+
+# Add lots of errors to labels
+NUM_ERRORS = 100
+s = np.array(y)
+error_indices = np.random.choice(len(s), NUM_ERRORS, replace=False)
+for i in error_indices:
+    # Switch to some wrong label thats a different class
+    wrong_label = np.random.choice(np.delete(range(10), s[i]))
+    s[i] = wrong_label
+
+# Confirm that we indeed added NUM_ERRORS label errors
+assert (len(s) - sum(s == y) == NUM_ERRORS)
+actual_label_errors = np.arange(len(y))[s != y]
+print('\nIndices of actual label errors:\n', actual_label_errors)
+
+# To keep the tutorial short, we use cleanlab to get the 
+# out-of-sample predicted probabilities using cross-validation
+# with a very simple, non-optimized logistic regression classifier
+psx = cleanlab.latent_estimation.estimate_cv_predicted_probabilities(
+    X, s, clf=LogisticRegression(max_iter=1000, multi_class='auto', solver='lbfgs'))
+
+# Now we have our noisy labels s and predicted probabilities psx.
+# That's all we need for confident learning.
+
+# STEP 1 - Compute confident joint
+
+# Verify inputs
+s = np.asarray(s)
+psx = np.asarray(psx)
+
+# Find the number of unique classes if K is not given
+K = len(np.unique(s))
+
+# Estimate the probability thresholds for confident counting
+# You can specify these thresholds yourself if you want
+# as you may want to optimize them using a validation set.
+# By default (and provably so) they are set to the average class prob.
+thresholds = [np.mean(psx[:,k][s == k]) for k in range(K)] # P(s^=k|s=k)
+thresholds = np.asarray(thresholds)
+
+# Compute confident joint
+confident_joint = np.zeros((K, K), dtype = int)
+for i, row in enumerate(psx):
+    s_label = s[i]
+    # Find out how many classes each example is confidently labeled as
+    confident_bins = row >= thresholds - 1e-6
+    num_confident_bins = sum(confident_bins)
+    # If more than one conf class, inc the count of the max prob class
+    if num_confident_bins == 1:
+        confident_joint[s_label][np.argmax(confident_bins)] += 1
+    elif num_confident_bins > 1:
+        confident_joint[s_label][np.argmax(row)] += 1
+
+# Normalize confident joint (use cleanlab, trust me on this)
+confident_joint = cleanlab.latent_estimation.calibrate_confident_joint(
+    confident_joint, s)
+
+cleanlab.util.print_joint_matrix(confident_joint)
+
+# STEP 2 - Find label errors
+
+# We arbitrarily choose at least 5 examples left in every class.
+# Regardless of whether some of them might be label errors.
+MIN_NUM_PER_CLASS = 5
+# Leave at least MIN_NUM_PER_CLASS examples per class.
+# NOTE prune_count_matrix is transposed (relative to confident_joint)
+prune_count_matrix = cleanlab.pruning.keep_at_least_n_per_class(
+    prune_count_matrix=confident_joint.T,
+    n=MIN_NUM_PER_CLASS,
+)
+
+s_counts = np.bincount(s)
+noise_masks_per_class = []
+# For each row in the transposed confident joint
+for k in range(K):
+    noise_mask = np.zeros(len(psx), dtype=bool)
+    psx_k = psx[:, k]
+    if s_counts[k] > MIN_NUM_PER_CLASS:  # Don't prune if not MIN_NUM_PER_CLASS
+        for j in range(K):  # noisy label index (k is the true label index)
+            if k != j:  # Only prune for noise rates, not diagonal entries
+                num2prune = prune_count_matrix[k][j]
+                if num2prune > 0:
+                    # num2prune'th largest p(classk) - p(class j)
+                    # for x with noisy label j
+                    margin = psx_k - psx[:, j]
+                    s_filter = s == j
+                    threshold = -np.partition(
+                        -margin[s_filter], num2prune - 1
+                    )[num2prune - 1]
+                    noise_mask = noise_mask | (s_filter & (margin >= threshold))
+        noise_masks_per_class.append(noise_mask)
+    else:
+        noise_masks_per_class.append(np.zeros(len(s), dtype=bool))
+
+# Boolean label error mask
+label_errors_bool = np.stack(noise_masks_per_class).any(axis=0)
+
+ # Remove label errors if given label == model prediction
+for i, pred_label in enumerate(psx.argmax(axis=1)):
+    # np.all let's this work for multi_label and single label
+    if label_errors_bool[i] and np.all(pred_label == s[i]):
+        label_errors_bool[i] = False
+
+# Convert boolean mask to an ordered list of indices for label errors
+label_errors_idx = np.arange(len(s))[label_errors_bool]
+# self confidence is the holdout probability that an example
+# belongs to its given class label
+self_confidence = np.array(
+    [np.mean(psx[i][s[i]]) for i in label_errors_idx]
+)
+margin = self_confidence - psx[label_errors_bool].max(axis=1)
+label_errors_idx = label_errors_idx[np.argsort(margin)]
+
+print('Indices of label errors found by confident learning:')
+print('Note label errors are sorted by likelihood of being an error')
+print('but here we just sort them by index for comparison with above.')
+print(np.array(sorted(label_errors_idx)))
+
+score = sum([e in label_errors_idx for e in actual_label_errors]) / NUM_ERRORS
+print('% actual errors that confident learning found: {:.0%}'.format(score))
+score = sum([e in actual_label_errors for e in label_errors_idx]) / len(label_errors_idx)
+print('% confident learning errors that are actual errors: {:.0%}'.format(score))

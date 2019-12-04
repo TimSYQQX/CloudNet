@@ -2,8 +2,14 @@
 	path = AutoDeeplab
 	url = ./AutoDeeplab/
 [submodule "SMP"]
-	path = segmentation_models.pytorch
-	url = ./segmentation_models.pytorch/
+	path = SMP
+	url = ./SMP/
 [submodule "cleanlab"]
 	path = cleanlab
 	url = ./cleanlab/
+[submodule "RAdam"]
+	path = RAdam
+	url = ./RAdam
+[submodule "lookahead.pytorch"]
+	path = lookahead.pytorch
+	url = ./lookahead.pytorch/

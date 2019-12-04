@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib as plt
 import cv2
 import os
+import segmentation_models_pytorch as smp
 
 def get_img(x, folder: str = 'train_images'):
     """
@@ -167,7 +168,6 @@ def post_process(probability, threshold, min_size):
 
 def get_training_augmentation():
     train_transform = [
-
         albu.HorizontalFlip(p=0.5),
         albu.ShiftScaleRotate(scale_limit=0.5, rotate_limit=0, shift_limit=0.1, p=0.5, border_mode=0),
         albu.GridDistortion(p=0.5),
@@ -175,7 +175,6 @@ def get_training_augmentation():
         albu.Resize(320, 640)
     ]
     return albu.Compose(train_transform)
-
 
 def get_validation_augmentation():
     """Add paddings to make image shape divisible by 32"""
@@ -210,3 +209,8 @@ def dice(img1, img2):
     intersection = np.logical_and(img1, img2)
 
     return 2. * intersection.sum() / (img1.sum() + img2.sum())
+
+def compound_loss(logits, labels):
+    dice_loss = smp.utils.losses.Diceloss()
+    BCE_loss = torch.nn.BCEloss()
+    return dice_loss(logits, labels) + BCE_loss(logits, labels)

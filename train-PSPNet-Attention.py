@@ -5,7 +5,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.model_selection import train_test_split
 from dataset import CloudDataset
-import segmentation_models_pytorch as smp
+from SMP.segmentation_models_pytorch.pspnet.model import PSPNet
+from SMP.segmentation_models_pytorch.encoders import get_preprocessing_fn
 from catalyst.dl.runner import SupervisedRunner
 from torch.optim.lr_scheduler import StepLR, ReduceLROnPlateau, CosineAnnealingLR
 import torch
@@ -87,19 +88,19 @@ def main():
 
     ######### model parameter
     ACTIVATION = torch.nn.Sigmoid
-    model = smp.Unet(
+    model = PSPNet(
         encoder_name=args.encoder,
         encoder_weights=args.encoder_weight,
         classes=args.class_num,
         activation=ACTIVATION,
     )
-    preprocessing_fn = smp.encoders.get_preprocessing_fn(args.encoder, args.encoder_weight)
+    preprocessing_fn = get_preprocessing_fn(args.encoder, args.encoder_weight)
 #     model.cuda()
 #     torchsummary.summary(model, (3,320, 640))
 
 
     ######### define train training parameter
-    num_workers = 0
+    num_workers = 8
     train_dataset = CloudDataset(df=train, datatype='train', img_ids=train_ids, transforms=get_training_augmentation(),
                                  preprocessing=get_preprocessing(preprocessing_fn), path=path)
     valid_dataset = CloudDataset(df=train, datatype='valid', img_ids=valid_ids,
@@ -136,7 +137,7 @@ def main():
 #         verbose=True
 #     )
     model.cuda(1)
-    writer = SummaryWriter(r"runs/Unet")
+    writer = SummaryWriter("runs/PSPNet-Attention")
     step = 0
     for epoch in range(num_epochs):
         torch.cuda.empty_cache() 
@@ -168,7 +169,7 @@ def main():
         
         print("Validation loss: ", np.mean(validation_loss))
         writer.add_scalar("validation_loss", np.mean(validation_loss), epoch)
-        torch.save(model.state_dict(), "../checkpoint/Unet/"+str(epoch))
+        torch.save(model.state_dict(), "../checkpoint/PSPNet/PSPNet-Attention"+str(epoch))
         scheduler.step(np.mean(validation_loss))
     writer.close()
 

@@ -19,6 +19,7 @@ import cv2
 from  torch.utils.tensorboard import SummaryWriter
 import os
 import argparse
+from RAdam.radam import RAdam
 import torchsummary
 
 def main():
@@ -87,7 +88,7 @@ def main():
 
     ######### model parameter
     ACTIVATION = torch.nn.Sigmoid
-    model = smp.Unet(
+    model = smp.PSPNet(
         encoder_name=args.encoder,
         encoder_weights=args.encoder_weight,
         classes=args.class_num,
@@ -99,7 +100,7 @@ def main():
 
 
     ######### define train training parameter
-    num_workers = 0
+    num_workers = 4
     train_dataset = CloudDataset(df=train, datatype='train', img_ids=train_ids, transforms=get_training_augmentation(),
                                  preprocessing=get_preprocessing(preprocessing_fn), path=path)
     valid_dataset = CloudDataset(df=train, datatype='valid', img_ids=valid_ids,
@@ -113,7 +114,7 @@ def main():
         "valid": valid_loader
     }
 
-    optimizer = torch.optim.Adam([
+    optimizer = RAdam([
         {'params': model.decoder.parameters(), 'lr': 1e-2},
         {'params': model.encoder.parameters(), 'lr': 1e-3},
     ])
@@ -136,7 +137,7 @@ def main():
 #         verbose=True
 #     )
     model.cuda(1)
-    writer = SummaryWriter(r"runs/Unet")
+    writer = SummaryWriter("runs/PSPNet-RAdam")
     step = 0
     for epoch in range(num_epochs):
         torch.cuda.empty_cache() 
@@ -168,7 +169,7 @@ def main():
         
         print("Validation loss: ", np.mean(validation_loss))
         writer.add_scalar("validation_loss", np.mean(validation_loss), epoch)
-        torch.save(model.state_dict(), "../checkpoint/Unet/"+str(epoch))
+        torch.save(model.state_dict(), "../checkpoint/PSPNet-RAdam/"+str(epoch))
         scheduler.step(np.mean(validation_loss))
     writer.close()
 

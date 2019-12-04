@@ -29,7 +29,7 @@ def main():
     parser.add_argument('--dataset_path', default='../input/understanding_cloud_organization', help="Path to the dataset directory")
     parser.add_argument('--log_path', default='./logs/segmentation',
                         help="Path to the log directory")
-    parser.add_argument('--encoder', default='resnet50', help="Type of encoder in model")
+    parser.add_argument('--encoder', default='vgg19_bn', help="Type of encoder in model")
     parser.add_argument('--encoder_weight', default='imagenet', help='Type of encoder weight in model')
     parser.add_argument('--device', default='cuda', help='Training device with default cuda')
     parser.add_argument('--class_num', type=int, default=4, help='Number of classes trying to train')
@@ -87,7 +87,7 @@ def main():
 
     ######### model parameter
     ACTIVATION = torch.nn.Sigmoid
-    model = smp.Unet(
+    model = smp.PSPNet(
         encoder_name=args.encoder,
         encoder_weights=args.encoder_weight,
         classes=args.class_num,
@@ -99,7 +99,7 @@ def main():
 
 
     ######### define train training parameter
-    num_workers = 0
+    num_workers = 8
     train_dataset = CloudDataset(df=train, datatype='train', img_ids=train_ids, transforms=get_training_augmentation(),
                                  preprocessing=get_preprocessing(preprocessing_fn), path=path)
     valid_dataset = CloudDataset(df=train, datatype='valid', img_ids=valid_ids,
@@ -135,8 +135,8 @@ def main():
 #         num_epochs=args.epochs_num,
 #         verbose=True
 #     )
-    model.cuda(1)
-    writer = SummaryWriter(r"runs/Unet")
+    model.cuda()
+    writer = SummaryWriter("runs/PSPNet-vgg19_bn")
     step = 0
     for epoch in range(num_epochs):
         torch.cuda.empty_cache() 
@@ -144,8 +144,8 @@ def main():
         print("training")
         model.train()
         for img, label in (loaders["train"]):
-            img = img.cuda(1)
-            label = label.cuda(1)        
+            img = img.cuda()
+            label = label.cuda()        
             logit = model(img)
             loss = criterion(logit, label)
             loss.backward()
@@ -160,15 +160,15 @@ def main():
         model.eval()
         validation_loss = []
         for img, label in tqdm(loaders["valid"]):
-            img = img.cuda(1)
-            label = label.cuda(1)
+            img = img.cuda()
+            label = label.cuda()
             logit = model.predict(img)
             loss = criterion(logit, label)
             validation_loss.append(loss.item())
         
         print("Validation loss: ", np.mean(validation_loss))
         writer.add_scalar("validation_loss", np.mean(validation_loss), epoch)
-        torch.save(model.state_dict(), "../checkpoint/Unet/"+str(epoch))
+        torch.save(model.state_dict(), "../checkpoint/PSPNet-vgg19_bn/"+str(epoch))
         scheduler.step(np.mean(validation_loss))
     writer.close()
 

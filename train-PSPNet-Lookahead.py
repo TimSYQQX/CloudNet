@@ -20,6 +20,7 @@ from  torch.utils.tensorboard import SummaryWriter
 import os
 import argparse
 import torchsummary
+from lookahead.lookahead_opt import Lookahead
 
 def main():
     ######### add arguments
@@ -87,7 +88,7 @@ def main():
 
     ######### model parameter
     ACTIVATION = torch.nn.Sigmoid
-    model = smp.Unet(
+    model = smp.PSPNet(
         encoder_name=args.encoder,
         encoder_weights=args.encoder_weight,
         classes=args.class_num,
@@ -99,7 +100,7 @@ def main():
 
 
     ######### define train training parameter
-    num_workers = 0
+    num_workers = 4
     train_dataset = CloudDataset(df=train, datatype='train', img_ids=train_ids, transforms=get_training_augmentation(),
                                  preprocessing=get_preprocessing(preprocessing_fn), path=path)
     valid_dataset = CloudDataset(df=train, datatype='valid', img_ids=valid_ids,
@@ -136,7 +137,7 @@ def main():
 #         verbose=True
 #     )
     model.cuda(1)
-    writer = SummaryWriter(r"runs/Unet")
+    writer = SummaryWriter("runs/PSPNet-Lookahead")
     step = 0
     for epoch in range(num_epochs):
         torch.cuda.empty_cache() 
@@ -148,9 +149,13 @@ def main():
             label = label.cuda(1)        
             logit = model(img)
             loss = criterion(logit, label)
+            
+            base_opt = optimizer
+            lookahead = Lookahead(base_opt, k=5, alpha=0.5)
+            lookahead.zero_grad()
             loss.backward()
-            optimizer.step()
-            optimizer.zero_grad()
+            lookahead.step()
+        
             writer.add_scalar("training_loss", loss.item(), step)
             step += 1
             if not step % 40:
@@ -168,7 +173,7 @@ def main():
         
         print("Validation loss: ", np.mean(validation_loss))
         writer.add_scalar("validation_loss", np.mean(validation_loss), epoch)
-        torch.save(model.state_dict(), "../checkpoint/Unet/"+str(epoch))
+        torch.save(model.state_dict(), "../checkpoint/PSPNet-Lookahead/"+str(epoch))
         scheduler.step(np.mean(validation_loss))
     writer.close()
 

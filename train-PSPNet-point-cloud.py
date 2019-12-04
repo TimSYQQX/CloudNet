@@ -56,24 +56,6 @@ def main():
     sub['label'] = sub['Image_Label'].apply(lambda x: x.split('_')[1])
     sub['im_id'] = sub['Image_Label'].apply(lambda x: x.split('_')[0])
 
-
-#     ######### visualize training image
-#     fig = plt.figure(figsize=(25, 16))
-#     for j, im_id in enumerate(np.random.choice(train['im_id'].unique(), 4)):
-#         for i, (idx, row) in enumerate(train.loc[train['im_id'] == im_id].iterrows()):
-#             ax = fig.add_subplot(5, 4, j * 4 + i + 1, xticks=[], yticks=[])
-#             im = Image.open(f"{path}/train_images/{row['Image_Label'].split('_')[0]}")
-#             plt.imshow(im)
-#             mask_rle = row['EncodedPixels']
-#             try:  # label might not be there!
-#                 mask = rle_decode(mask_rle)
-#             except:
-#                 mask = np.zeros((1400, 2100))
-#             plt.imshow(mask, alpha=0.5, cmap='gray')
-#             ax.set_title(f"Image: {row['Image_Label'].split('_')[0]}. Label: {row['label']}")
-
-
-
     ######### generating training, validation and test set
     id_mask_count = train.loc[train['EncodedPixels'].isnull() == False, 'Image_Label'].apply(
         lambda x: x.split('_')[0]).value_counts(). \
@@ -87,7 +69,8 @@ def main():
 
     ######### model parameter
     ACTIVATION = torch.nn.Sigmoid
-    model = smp.Unet(
+    model = smp.PSPNet(
+        in_channels=1,
         encoder_name=args.encoder,
         encoder_weights=args.encoder_weight,
         classes=args.class_num,
@@ -121,22 +104,8 @@ def main():
     criterion = torch.nn.BCELoss()
     runner = SupervisedRunner()
 
-
-
-    ######### train the model
-#     runner.train(
-#         model=model,
-#         criterion=criterion,
-#         optimizer=optimizer,
-#         scheduler=scheduler,
-#         loaders=loaders,
-#         callbacks=[DiceCallback(), EarlyStoppingCallback(patience=5, min_delta=0.001)],
-#         logdir=logdir,
-#         num_epochs=args.epochs_num,
-#         verbose=True
-#     )
     model.cuda(1)
-    writer = SummaryWriter(r"runs/Unet")
+    writer = SummaryWriter("runs/PSPNet-point/")
     step = 0
     for epoch in range(num_epochs):
         torch.cuda.empty_cache() 
@@ -145,6 +114,8 @@ def main():
         model.train()
         for img, label in (loaders["train"]):
             img = img.cuda(1)
+            img = torch.sum(img, axis=1)>0.5
+            img =1 img.unsqueeze(1).float()
             label = label.cuda(1)        
             logit = model(img)
             loss = criterion(logit, label)
@@ -161,6 +132,8 @@ def main():
         validation_loss = []
         for img, label in tqdm(loaders["valid"]):
             img = img.cuda(1)
+            img = torch.sum(img, axis=1)>0.5
+            img = img.unsqueeze(1).float()
             label = label.cuda(1)
             logit = model.predict(img)
             loss = criterion(logit, label)
@@ -168,7 +141,7 @@ def main():
         
         print("Validation loss: ", np.mean(validation_loss))
         writer.add_scalar("validation_loss", np.mean(validation_loss), epoch)
-        torch.save(model.state_dict(), "../checkpoint/Unet/"+str(epoch))
+        torch.save(model.state_dict(), "../checkpoint/PSPNet-point"+str(epoch))
         scheduler.step(np.mean(validation_loss))
     writer.close()
 
