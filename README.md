@@ -7,6 +7,6 @@ https://www.kaggle.com/c/understanding_cloud_organization
 
 # Best result
 
-| BCE | Dice |
-|-----|------|
-|0.2509|65.13|
+|| BCE | Dice |
+|-|-----|------|
+|Best|0.2509|65.13|
